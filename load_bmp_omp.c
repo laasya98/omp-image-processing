@@ -75,7 +75,7 @@ void write_bmp(FILE *fname, BITMAPINFOHEADER bi, unsigned char *img, int padding
             fputc(0x00, fname);
         }
     }
-    printf("%d\n", img_idx);
+//     printf("%d\n", img_idx);
 }
 
 // perform simple binary threshold
@@ -144,7 +144,7 @@ int main(int argc, char* argv[])
     unsigned char img[bi.biWidth * bi.biHeight];
     unsigned char edited_img[bi.biWidth * bi.biHeight];
 
-	printf("biBitCount: %d, biWidth: %d\n", bi.biCompression, bi.biWidth);
+	printf("biHeight: %d, biWidth: %d\n", bi.biHeight, bi.biWidth);
     // determine padding for scanlines
     int padding = (4 - (bi.biWidth * sizeof(RGBTRIPLE)) % 4) % 4;
 
