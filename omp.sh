@@ -9,7 +9,8 @@ then
 	exit
 fi
 
-gcc load_bmp_omp.c -fopenmp -lm -o load_omp
+# needed for definition of time.h
+gcc load_bmp_omp.c -fopenmp -lm -std=c99 -D_POSIX_C_SOURCE=199309L -o load_omp
 while [ $i -lt $MAX ]
 do 
 	./load_omp $1 $2 $3 $4 > out

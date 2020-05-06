@@ -9,7 +9,9 @@ then
 	exit
 fi
 
-gcc load_bmp.c -lm -o load_bmp
+# needed for definition of CLOCK_MONOTONIC
+gcc load_bmp.c -lm -std=c99 -D_POSIX_C_SOURCE=199309L -o load_bmp
+
 while [ $i -lt $MAX ]
 do 
 	./load_bmp $1 $2 $3 > out

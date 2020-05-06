@@ -1,4 +1,4 @@
-/* gcc load_bmp_omp.c -fopenmp -lm -o load_omp
+/* gcc load_bmp_omp.c -fopenmp -lm -o load_omp -std=c99 -D_POSIX_C_SOURCE=199309L
  * ./load_omp $(pwd)/gray.bmp $(pwd)/out.bmp <mode> <p> */
 
 #include <stdio.h>
@@ -169,8 +169,8 @@ void gaussian_filter(const pixel_t *in, pixel_t *out,
 	const float mean = (float)floor(n / 2.0);
 	float kernel[n * n]; // variable length array
  
-	fprintf(stderr, "gaussian_filter: kernel size %d, sigma=%g\n",
-			n, sigma);
+// 	fprintf(stderr, "gaussian_filter: kernel size %d, sigma=%g\n",
+// 			n, sigma);
 	size_t c = 0;
 	int i, j;
 #pragma omp parallel for shared(i, kernel) private(j, c)
