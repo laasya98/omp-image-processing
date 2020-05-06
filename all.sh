@@ -8,7 +8,7 @@ echo "name, height, width, time, numRuns, p" > $1
 
 array=(1 2 4 8)
 
-FILES=$(ls images/*.bmp)
+FILES=$(ls images/*0.bmp)
 for f in $FILES
 do 
 	echo $f
