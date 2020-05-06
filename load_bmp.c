@@ -359,23 +359,32 @@ int main(int argc, char* argv[])
 	// determine padding for scanlines
 	int padding = (4 - (bi.biWidth * sizeof(RGBTRIPLE)) % 4) % 4;
 
-	// start timing
-	clock_gettime(CLOCK_MONOTONIC, &start);
-	
 	// read infile into char array
 	read_bmp(source, bi, img, padding);
 
-	// TODO: add a case/switch here for different modes of operation
+	switch (mode) {
+		case 0: 
+			clock_gettime(CLOCK_MONOTONIC, &start);
+			threshold(img, edited_img, bi, 128);
+			clock_gettime(CLOCK_MONOTONIC, &end);
+			write_bmp(dest, bi, edited_img, padding);
+			break;
+		case 1: 
+			clock_gettime(CLOCK_MONOTONIC, &start);
+			pixel_t *out = malloc(bi.biSizeImage * sizeof(pixel_t));
+			out = canny_edge_detection(img, &bi, 45, 50, 1.0f); 
+			clock_gettime(CLOCK_MONOTONIC, &end);
+			write_bmp(dest, bi, out, padding);
+			free(out);
+			break;
+		default:
+			clock_gettime(CLOCK_MONOTONIC, &start);
+			threshold(img, edited_img, bi, 128);
+			clock_gettime(CLOCK_MONOTONIC, &end);
+			write_bmp(dest, bi, edited_img, padding);
+			break;
+	}
 
-	pixel_t *out = malloc(bi.biSizeImage * sizeof(pixel_t));
-	out = canny_edge_detection(img, &bi, 45, 50, 1.0f); 
-
-	//  binary thresh for now
-	//threshold(img, edited_img, bi, 128);
-
-	write_bmp(dest, bi, out, padding);
-
-	clock_gettime(CLOCK_MONOTONIC, &end);
 	time = (double) (BILLION*(end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec));
 	time /= BILLION;
 	printf("Elapsed time: %6.4f\n", time);
@@ -385,8 +394,6 @@ int main(int argc, char* argv[])
 
 	// close outfile
 	fclose(dest);
-
-	free(out);
 
 	return 0;
 }
