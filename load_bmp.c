@@ -1,4 +1,4 @@
-/* gcc load_bmp_omp.c -fopenmp -lm -std=c99 -D_POSIX_C_SOURCE=199309L -o load_bmp 
+/* gcc load_bmp.c -lm -std=c99 -D_POSIX_C_SOURCE=199309L -o load_bmp 
  * ./load_bmp <in.csv> <out.csv> <mode> */
 #include <stdio.h>
 #include <stdlib.h>
@@ -324,7 +324,7 @@ void histogram_eq(unsigned char* image, unsigned char* edited_image,
     for (row = 0; row < rows; row++) { 
         // logic for calculating histogram 
         for (col = 0; col < cols; col++) 
-            hist[(int)image[col]]++; 
+            hist[(int)image[row * rows + col]]++; 
     } 
   
     // calulating total number of pixels 
@@ -338,14 +338,14 @@ void histogram_eq(unsigned char* image, unsigned char* edited_image,
         // calculating new gray level after multiplying by 
         // maximum gray count which is 255 and dividing by 
         // total number of pixels 
-        new_gray_level[i] = round((((float)curr) * 255) / total); 
+        new_gray_level[i] = round((((float)curr) * 255) / (float)total); 
     } 
   
     // performing histogram equalization by mapping new gray levels 
     for (row = 0; row < rows; row++) { 
         // mapping to new gray level values 
         for (col = 0; col < cols; col++) 
-            edited_image[row + row*col] = (unsigned char)new_gray_level[image[col]]; 
+            edited_image[row*rows + col] = (unsigned char)new_gray_level[image[row*rows+col]]; 
     } 
   
 } 
@@ -408,27 +408,38 @@ int main(int argc, char* argv[])
 	// read infile into char array
 	read_bmp(source, bi, img, padding);
 
+	pixel_t *out;
 	switch (mode) {
-		case 0: 
+		case 0: // binary thresholding
 			clock_gettime(CLOCK_MONOTONIC, &start);
 			threshold(img, edited_img, bi, 128);
 			clock_gettime(CLOCK_MONOTONIC, &end);
 			write_bmp(dest, bi, edited_img, padding);
 			break;
-        case 1: 
+        case 1: // histogram equalization
 			clock_gettime(CLOCK_MONOTONIC, &start);
 			histogram_eq(img, edited_img, &bi);
 			clock_gettime(CLOCK_MONOTONIC, &end);
 			write_bmp(dest, bi, edited_img, padding);
 			break;
-		case 2: 
+		case 2: // edge detection
 			clock_gettime(CLOCK_MONOTONIC, &start);
-			pixel_t *out = malloc(bi.biSizeImage * sizeof(pixel_t));
+			out = malloc(bi.biSizeImage * sizeof(pixel_t));
 			out = canny_edge_detection(img, &bi, 45, 50, 1.0f); 
 			clock_gettime(CLOCK_MONOTONIC, &end);
 			write_bmp(dest, bi, out, padding);
 			free(out);
 			break;
+		case 3: // histogram equalization, then edge detection on equalized photo 
+			clock_gettime(CLOCK_MONOTONIC, &start);
+			histogram_eq(img, edited_img, &bi);
+			out = malloc(bi.biSizeImage * sizeof(pixel_t));
+			out = canny_edge_detection(edited_img, &bi, 45, 50, 1.0f); 
+			clock_gettime(CLOCK_MONOTONIC, &end);
+			write_bmp(dest, bi, out, padding);
+			free(out);
+			break;
+
 		default:
 			clock_gettime(CLOCK_MONOTONIC, &start);
 			clock_gettime(CLOCK_MONOTONIC, &end);
