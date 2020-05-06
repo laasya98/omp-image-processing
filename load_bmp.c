@@ -8,6 +8,7 @@
 #include <math.h>
 #include <assert.h>
 #include <string.h>
+#include <fcntl.h> 
 
 #include "bmp.h"
 
@@ -304,6 +305,51 @@ pixel_t *canny_edge_detection(const pixel_t *in,
 	return out;
 }
 
+void histogram_eq(unsigned char* image, unsigned char* edited_image, 
+                const BITMAPINFOHEADER *bmp_ih) 
+{ 
+    const int cols = bmp_ih->biWidth;
+	const int rows = bmp_ih->biHeight;
+
+  
+    // Declaring 2 arrays for storing histogram values (frequencies) and 
+    // new gray level values (newly mapped pixel values as per algorithm) 
+    int hist[256] = { 0 }; 
+    int new_gray_level[256] = { 0 }; 
+  
+    // Declaring other important variables 
+    int col, row, total, curr, i; 
+  
+    // Calculating frequency of occurrence for all pixel values 
+    for (row = 0; row < rows; row++) { 
+        // logic for calculating histogram 
+        for (col = 0; col < cols; col++) 
+            hist[(int)image[col]]++; 
+    } 
+  
+    // calulating total number of pixels 
+    total = cols * rows; 
+    curr = 0; 
+  
+    // calculating cumulative frequency and new gray levels 
+    for (i = 0; i < 256; i++) { 
+        // cumulative frequency 
+        curr += hist[i]; 
+        // calculating new gray level after multiplying by 
+        // maximum gray count which is 255 and dividing by 
+        // total number of pixels 
+        new_gray_level[i] = round((((float)curr) * 255) / total); 
+    } 
+  
+    // performing histogram equalization by mapping new gray levels 
+    for (row = 0; row < rows; row++) { 
+        // mapping to new gray level values 
+        for (col = 0; col < cols; col++) 
+            edited_image[row + row*col] = (unsigned char)new_gray_level[image[col]]; 
+    } 
+  
+} 
+
 
 int main(int argc, char* argv[])
 {
@@ -369,7 +415,13 @@ int main(int argc, char* argv[])
 			clock_gettime(CLOCK_MONOTONIC, &end);
 			write_bmp(dest, bi, edited_img, padding);
 			break;
-		case 1: 
+        case 1: 
+			clock_gettime(CLOCK_MONOTONIC, &start);
+			histogram_eq(img, edited_img, &bi);
+			clock_gettime(CLOCK_MONOTONIC, &end);
+			write_bmp(dest, bi, edited_img, padding);
+			break;
+		case 2: 
 			clock_gettime(CLOCK_MONOTONIC, &start);
 			pixel_t *out = malloc(bi.biSizeImage * sizeof(pixel_t));
 			out = canny_edge_detection(img, &bi, 45, 50, 1.0f); 
@@ -379,9 +431,8 @@ int main(int argc, char* argv[])
 			break;
 		default:
 			clock_gettime(CLOCK_MONOTONIC, &start);
-			threshold(img, edited_img, bi, 128);
 			clock_gettime(CLOCK_MONOTONIC, &end);
-			write_bmp(dest, bi, edited_img, padding);
+			write_bmp(dest, bi, img, padding);
 			break;
 	}
 
