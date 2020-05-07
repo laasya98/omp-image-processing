@@ -238,6 +238,152 @@ void erode(const pixel_t *in, pixel_t *out,
 	erode_convolution(in, out, kernel, nx, ny, n, true);
 	
 }  
+
+
+pixel_t *gradient(const pixel_t *in,
+							  const BITMAPINFOHEADER *bmp_ih,
+							  const int tmin, const int tmax,
+							  const float sigma)
+{
+	const int nx = bmp_ih->biWidth;
+	const int ny = bmp_ih->biHeight;
+ 
+	// gradient array
+	pixel_t *G = calloc(nx * ny * sizeof(pixel_t), 1);
+	pixel_t *after_Gx = calloc(nx * ny * sizeof(pixel_t), 1);
+	pixel_t *after_Gy = calloc(nx * ny * sizeof(pixel_t), 1);
+
+	// output
+	pixel_t *out = malloc(bmp_ih->biSizeImage * sizeof(pixel_t));
+ 
+	if (G == NULL || after_Gx == NULL || after_Gy == NULL ||
+	out == NULL) {
+		fprintf(stderr, "canny_edge_detection:"
+				" Failed memory allocation(s).\n");
+		exit(1);
+	}
+ 
+	// convolve input image with gaussian filter for smoothing/high pass filtering
+	gaussian_filter(in, out, nx, ny, sigma);
+ 
+	const float Gx[] = {-1, 0, 1,
+                      -2, 0, 2,
+                      -1, 0, 1};
+ 
+	// convolve smoothed output with Sobel gradient in X direction
+	convolution(out, after_Gx, Gx, nx, ny, 3, false);
+ 
+	const float Gy[] = { 1, 2, 1,
+                       0, 0, 0,
+                      -1,-2,-1};
+ 
+ 
+	// convolve smoothed output with Sobel gradient in Y direction
+	convolution(out, after_Gy, Gy, nx, ny, 3, false);
+ 
+	// store the magnitude of the results of X & Y gradient calculation in the G gradient array
+	for (int i = 1; i < nx - 1; i++)
+		for (int j = 1; j < ny - 1; j++) {
+			const int c = i + nx * j;
+			out[c] = (pixel_t)hypot(after_Gx[c], after_Gy[c]);
+		}
+
+	free(after_Gx);
+	free(after_Gy);
+ 
+	return out;
+ 
+}
+
+pixel_t *nms(const pixel_t *in,
+							  const BITMAPINFOHEADER *bmp_ih,
+							  const int tmin, const int tmax,
+							  const float sigma)
+{
+	const int nx = bmp_ih->biWidth;
+	const int ny = bmp_ih->biHeight;
+ 
+	// gradient array
+	pixel_t *G = calloc(nx * ny * sizeof(pixel_t), 1);
+	pixel_t *after_Gx = calloc(nx * ny * sizeof(pixel_t), 1);
+	pixel_t *after_Gy = calloc(nx * ny * sizeof(pixel_t), 1);
+
+	// output
+	pixel_t *out = malloc(bmp_ih->biSizeImage * sizeof(pixel_t));
+ 
+	if (G == NULL || after_Gx == NULL || after_Gy == NULL ) {
+		fprintf(stderr, "canny_edge_detection:"
+				" Failed memory allocation(s).\n");
+		exit(1);
+	}
+ 
+	// convolve input image with gaussian filter for smoothing/high pass filtering
+	gaussian_filter(in, out, nx, ny, sigma);
+ 
+	const float Gx[] = {-1, 0, 1,
+                      -2, 0, 2,
+                      -1, 0, 1};
+ 
+	// convolve smoothed output with Sobel gradient in X direction
+	convolution(out, after_Gx, Gx, nx, ny, 3, false);
+ 
+	const float Gy[] = { 1, 2, 1,
+                       0, 0, 0,
+                      -1,-2,-1};
+ 
+ 
+	// convolve smoothed output with Sobel gradient in Y direction
+	convolution(out, after_Gy, Gy, nx, ny, 3, false);
+ 
+	// store the magnitude of the results of X & Y gradient calculation in the G gradient array
+	for (int i = 1; i < nx - 1; i++)
+		for (int j = 1; j < ny - 1; j++) {
+			const int c = i + nx * j;
+			G[c] = (pixel_t)hypot(after_Gx[c], after_Gy[c]);
+		}
+ 
+	// Non-maximum suppression, straightforward implementation.
+	for (int i = 1; i < nx - 1; i++)
+		for (int j = 1; j < ny - 1; j++) {
+			const int c = i + nx * j;
+			const int nn = c - nx;
+			const int ss = c + nx;
+			const int ww = c + 1;
+			const int ee = c - 1;
+			const int nw = nn + 1;
+			const int ne = nn - 1;
+			const int sw = ss + 1;
+			const int se = ss - 1;
+ 
+			// angle-based calculation of the gradient direction
+			const float dir = (float)(fmod(atan2(after_Gy[c],
+												 after_Gx[c]) + M_PI,
+										   M_PI) / M_PI) * 8;
+ 
+			// if the pixel of importance is greater than the following in the direction
+			// of the gradient, keep it in the NMS array, else set it to 0.
+			if (((dir <= 1 || dir > 7) && G[c] > G[ee] &&
+				 G[c] > G[ww]) || // 0 deg
+				((dir > 1 && dir <= 3) && G[c] > G[nw] &&
+				 G[c] > G[se]) || // 45 deg
+				((dir > 3 && dir <= 5) && G[c] > G[nn] &&
+				 G[c] > G[ss]) || // 90 deg
+				((dir > 5 && dir <= 7) && G[c] > G[ne] &&
+				 G[c] > G[sw]))   // 135 deg
+				out[c] = G[c];
+			else
+				out[c] = 0;
+		}
+ 
+	free(after_Gx);
+	free(after_Gy);
+	free(G);
+ 
+	return out;
+}
+
+
+
 /*
  * Links:
  * http://en.wikipedia.org/wiki/Canny_edge_detector
@@ -254,6 +400,7 @@ pixel_t *canny_edge_detection(const pixel_t *in,
 {
 	const int nx = bmp_ih->biWidth;
 	const int ny = bmp_ih->biHeight;
+	int padding = (4 - (bmp_ih->biWidth * sizeof(RGBTRIPLE)) % 4) % 4;
  
 	// gradient array
 	pixel_t *G = calloc(nx * ny * sizeof(pixel_t), 1);
@@ -390,6 +537,8 @@ pixel_t *canny_edge_detection(const pixel_t *in,
  
 	return out;
 }
+
+
 
 void histogram_eq(unsigned char* image, unsigned char* edited_image, 
                 const BITMAPINFOHEADER *bmp_ih) 
@@ -536,6 +685,24 @@ int main(int argc, char* argv[])
 			out = canny_edge_detection(img, &bi, 120, 130, 1.0f); 
 			clock_gettime(CLOCK_MONOTONIC, &end);
 			write_bmp(dest, bi, out, padding);
+			free(out);
+			break;
+		case 5: // histeq, erosion, save gradient image
+			clock_gettime(CLOCK_MONOTONIC, &start);
+			histogram_eq(img, edited_img, &bi);
+			out = malloc(bi.biSizeImage * sizeof(pixel_t));
+			out = gradient(edited_img, &bi, 90, 100, 1.0f); 
+			write_bmp(dest, bi, out, padding);
+			clock_gettime(CLOCK_MONOTONIC, &end);
+			free(out);
+			break;
+		case 6: // histeq, erosion, save gradient image
+			clock_gettime(CLOCK_MONOTONIC, &start);
+			histogram_eq(img, edited_img, &bi);
+			out = malloc(bi.biSizeImage * sizeof(pixel_t));
+			out = nms(edited_img, &bi, 90, 100, 1.0f); 
+			write_bmp(dest, bi, out, padding);
+			clock_gettime(CLOCK_MONOTONIC, &end);
 			free(out);
 			break;
 		default:  // save a grayscale image
