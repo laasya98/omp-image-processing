@@ -175,7 +175,72 @@ void gaussian_filter(const pixel_t *in, pixel_t *out,
  
 	convolution(in, out, kernel, nx, ny, n, true);
 }
+void erode_convolution(const pixel_t *in, pixel_t *out, const float *kernel,
+				 const int nx, const int ny, const int kn,
+				 const bool normalize)
+{
+	assert(kn % 2 == 1);
+	assert(nx > kn && ny > kn);
+	const int khalf = kn / 2;
+	float min = FLT_MAX, max = -FLT_MAX;
  
+	int m, n, j, i;
+	if (normalize) {
+		for (m = khalf; m < nx - khalf; m++)
+			for (n = khalf; n < ny - khalf; n++) {
+				float pixel = 0.0;
+				size_t c = 0;
+				for (j = -khalf; j <= khalf; j++)
+					for (i = -khalf; i <= khalf; i++) {
+						pixel += in[(n - j) * nx + m - i] * kernel[c];
+						c++;
+					}
+				if (pixel < min)
+					min = pixel;
+				if (pixel > max)
+					max = pixel;
+				}
+	}
+ 
+	for (m = khalf; m < nx - khalf; m++)
+		for (n = khalf; n < ny - khalf; n++) {
+			float pixel = 0.0;
+			size_t c = 0;
+			for (j = -khalf; j <= khalf; j++)
+				for (i = -khalf; i <= khalf; i++) {
+					pixel += in[(n - j) * nx + m - i] * kernel[c];
+					c++;
+				}
+ 
+			if (normalize)
+				pixel = MAX_BRIGHTNESS * (pixel - min) / (max - min);
+			if (pixel < min + 120) 
+				pixel = min;
+			else if (pixel > max - 30)
+				pixel = max;
+			out[n * nx + m] = (pixel_t)pixel;
+		}
+}
+void erode(const pixel_t *in, pixel_t *out,
+					 const int nx, const int ny, const float sigma)
+{
+	const int n = 2 * (int)(2 * sigma) + 3;
+	const float mean = (float)floor(n / 2.0);
+	float kernel[n * n]; // variable length array
+	
+	int i, j; 
+	for (i = 0; i < n; i++) {
+		for (j = 0; j < n; j++) {
+// 			if ( j == 1 || j == 3 )
+// 				kernel[i*n+j] = 0;
+// 			else 
+				kernel[i*n+j] = 1;
+		}
+	}
+
+	erode_convolution(in, out, kernel, nx, ny, n, true);
+	
+}  
 /*
  * Links:
  * http://en.wikipedia.org/wiki/Canny_edge_detector
@@ -308,8 +373,8 @@ pixel_t *canny_edge_detection(const pixel_t *in,
 void histogram_eq(unsigned char* image, unsigned char* edited_image, 
                 const BITMAPINFOHEADER *bmp_ih) 
 { 
-    const int cols = bmp_ih->biWidth;
-	const int rows = bmp_ih->biHeight;
+    const int cols = bmp_ih->biHeight;
+	const int rows = bmp_ih->biWidth;
 
   
     // Declaring 2 arrays for storing histogram values (frequencies) and 
@@ -324,7 +389,7 @@ void histogram_eq(unsigned char* image, unsigned char* edited_image,
     for (row = 0; row < rows; row++) { 
         // logic for calculating histogram 
         for (col = 0; col < cols; col++) 
-            hist[(int)image[row * rows + col]]++; 
+            hist[(int)image[(row*rows)+col]]++; 
     } 
   
     // calulating total number of pixels 
@@ -345,7 +410,7 @@ void histogram_eq(unsigned char* image, unsigned char* edited_image,
     for (row = 0; row < rows; row++) { 
         // mapping to new gray level values 
         for (col = 0; col < cols; col++) 
-            edited_image[row*rows + col] = (unsigned char)new_gray_level[image[row*rows+col]]; 
+            edited_image[(row*rows)+col] = (unsigned char)new_gray_level[image[(row*rows)+col]]; 
     } 
   
 } 
@@ -385,7 +450,7 @@ int main(int argc, char* argv[])
 		fclose(source);
 		fclose(dest);
 		fprintf(stderr, "Wrong input file format.\n");
-		return 4;
+		return 1;
 	}
 	
 	// write outfile's BITMAPFILEHEADER and BITMAPINFOHEADER
@@ -425,7 +490,7 @@ int main(int argc, char* argv[])
 		case 2: // edge detection
 			clock_gettime(CLOCK_MONOTONIC, &start);
 			out = malloc(bi.biSizeImage * sizeof(pixel_t));
-			out = canny_edge_detection(img, &bi, 45, 50, 1.0f); 
+			out = canny_edge_detection(img, &bi, 90, 100, 1.0f); 
 			clock_gettime(CLOCK_MONOTONIC, &end);
 			write_bmp(dest, bi, out, padding);
 			free(out);
@@ -434,12 +499,26 @@ int main(int argc, char* argv[])
 			clock_gettime(CLOCK_MONOTONIC, &start);
 			histogram_eq(img, edited_img, &bi);
 			out = malloc(bi.biSizeImage * sizeof(pixel_t));
-			out = canny_edge_detection(edited_img, &bi, 45, 50, 1.0f); 
+			out = canny_edge_detection(edited_img, &bi, 90, 100, 1.0f); 
 			clock_gettime(CLOCK_MONOTONIC, &end);
 			write_bmp(dest, bi, out, padding);
 			free(out);
 			break;
-
+		case 4: 
+			clock_gettime(CLOCK_MONOTONIC, &start);
+			out = malloc(bi.biSizeImage * sizeof(pixel_t));
+  			histogram_eq(img, edited_img, &bi);
+			float sigma;
+			if ( bi.biWidth < 400 ) sigma = 0.0f;
+			else if ( bi.biWidth < 800 ) sigma = 0.5f;
+			else if ( bi.biWidth < 1200) sigma = 1.0f;
+			else sigma = 2.0f;
+			erode(edited_img, img, bi.biWidth, bi.biHeight, sigma);
+			out = canny_edge_detection(img, &bi, 120, 130, 1.0f); 
+			clock_gettime(CLOCK_MONOTONIC, &end);
+			write_bmp(dest, bi, out, padding);
+			free(out);
+			break;
 		default:
 			clock_gettime(CLOCK_MONOTONIC, &start);
 			clock_gettime(CLOCK_MONOTONIC, &end);
