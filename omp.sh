@@ -1,5 +1,5 @@
 i=0
-MAX=10
+MAX=1
 time=0
 size=0
 
@@ -30,8 +30,8 @@ width=${stringarray[1]}
 time=$(awk "BEGIN {print (${time}/${MAX})}")
 #time=$(awk '{print $1/$2}' <<<"${time} ${MAX}")
 echo "Average time: ${time} over ${MAX} runs"
-echo "$1, ${height}, ${width}, ${time}, ${MAX}, $4" >> $6
+echo "$1, ${height}, ${width}, $3, ${time}, ${MAX}, $4" >> $6
 if [ "$5" -eq "1" ]
 then
-	gpicview $2 &
+	gpicview $2
 fi
