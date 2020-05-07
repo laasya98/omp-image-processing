@@ -20,7 +20,6 @@ typedef unsigned char pixel_t;
 
 void read_bmp(FILE *fname, BITMAPINFOHEADER bi, unsigned char *img, int padding)
 {
-//	fseek(fname, 56, SEEK_SET);
 	int img_idx = 0;
 	// iterate over infile's scanlines
 	for (int i = 0, biHeight = abs(bi.biHeight); i < biHeight; i++)
@@ -33,19 +32,12 @@ void read_bmp(FILE *fname, BITMAPINFOHEADER bi, unsigned char *img, int padding)
 
 			// read RGB triple from infile
 			fread(&triple, sizeof(RGBTRIPLE), 1, fname);
-//			if ( i==125 ) printf("%x, %x, %x\n", triple.rgbtBlue, triple.rgbtGreen, triple.rgbtRed);
 
-			// put into char array (BGR order)
+			// maintain lumosity when calculating grayscale value
 			img[img_idx] = .3*triple.rgbtBlue + .59*triple.rgbtGreen + .11*triple.rgbtRed;
-//			img[img_idx] = triple.rgbtBlue/3 + triple.rgbtGreen/3 + triple.rgbtRed/3;
 			img_idx ++;
 
 		}
-		// skip over padding, if any
-//         for (int k = 0; k < padding; k++)
-//         {
-//             printf("padding: %d\n", fgetc(fname));
-//         }
 		fseek(fname, padding, SEEK_CUR);
 	}
 }
@@ -66,14 +58,13 @@ void write_bmp(FILE *fname, BITMAPINFOHEADER bi, unsigned char *img, int padding
 			unsigned char r, g, b;
 			gray = img[img_idx];
 
+			// write rgb triple
 			r = gray;//.3;
 			g = gray;//.59;
 			b = gray;//.11; 
 			triple.rgbtBlue = b; triple.rgbtGreen = g; triple.rgbtRed = r;
 			fwrite(&triple, sizeof(RGBTRIPLE), 1, fname); 
-			// fputc(r, fname);
-			// fputc(g, fname);
-			// fputc(b, fname);
+
 			img_idx ++;
 		}
 
@@ -90,13 +81,12 @@ void write_bmp(FILE *fname, BITMAPINFOHEADER bi, unsigned char *img, int padding
 void threshold(unsigned char *img, unsigned char *edited_img, BITMAPINFOHEADER bi, int thresh) 
 {
 	for (int i = 0; i < (bi.biHeight * bi.biWidth); i++) {
+		// check if pixel meets threshold criteria
 		if (img[i] < thresh) {
 			edited_img[i] = 0x00;
-			//printf("%d, %d | ",  img[i], edited_img[i]);
 		}
 		else {
 			edited_img[i] = 0xFF;
-			//printf("%d, %d | ",  img[i], edited_img[i]);
 		}
 
 	}
@@ -106,6 +96,7 @@ void convolution(const pixel_t *in, pixel_t *out, const float *kernel,
 				 const int nx, const int ny, const int kn,
 				 const bool normalize)
 {
+	// kernel should be odd dimensioned and smaller than image
 	assert(kn % 2 == 1);
 	assert(nx > kn && ny > kn);
 	const int khalf = kn / 2;
@@ -113,12 +104,13 @@ void convolution(const pixel_t *in, pixel_t *out, const float *kernel,
  
 	if (normalize)
 		for (int m = khalf; m < nx - khalf; m++)
-			for (int n = khalf; n < ny - khalf; n++) {
+			for (int n = khalf; n < ny - khalf; n++) { 		// bound the kernel ranges
 				float pixel = 0.0;
 				size_t c = 0;
 				for (int j = -khalf; j <= khalf; j++)
 					for (int i = -khalf; i <= khalf; i++) {
-						pixel += in[(n - j) * nx + m - i] * kernel[c];
+						// determine the max/min possible values for a pixel after convolution
+						pixel += in[(n - j) * nx + m - i] * kernel[c];	
 						c++;
 					}
 				if (pixel < min)
@@ -133,12 +125,15 @@ void convolution(const pixel_t *in, pixel_t *out, const float *kernel,
 			size_t c = 0;
 			for (int j = -khalf; j <= khalf; j++)
 				for (int i = -khalf; i <= khalf; i++) {
+					// perform convoluton
 					pixel += in[(n - j) * nx + m - i] * kernel[c];
 					c++;
 				}
  
 			if (normalize)
+				// min max scaling for brightness normalization
 				pixel = MAX_BRIGHTNESS * (pixel - min) / (max - min);
+			// reassign pixel values
 			out[n * nx + m] = (pixel_t)pixel;
 		}
 }
@@ -158,21 +153,22 @@ void convolution(const pixel_t *in, pixel_t *out, const float *kernel,
 void gaussian_filter(const pixel_t *in, pixel_t *out,
 					 const int nx, const int ny, const float sigma)
 {
+	// kernel size dependent on sigma
 	const int n = 2 * (int)(2 * sigma) + 3;
 	const float mean = (float)floor(n / 2.0);
 	float kernel[n * n]; // variable length array
  
-// 	fprintf(stderr, "gaussian_filter: kernel size %d, sigma=%g\n",
-// 			n, sigma);
 	size_t c = 0;
 	for (int i = 0; i < n; i++)
 		for (int j = 0; j < n; j++) {
+			// assign values to the kernel based on gaussian distribution function
 			kernel[c] = exp(-0.5 * (pow((i - mean) / sigma, 2.0) +
 									pow((j - mean) / sigma, 2.0)))
 						/ (2 * M_PI * sigma * sigma);
 			c++;
 		}
  
+	// convolve input with the gaussian kernel & normalize output
 	convolution(in, out, kernel, nx, ny, n, true);
 }
 void erode_convolution(const pixel_t *in, pixel_t *out, const float *kernel,
@@ -214,6 +210,8 @@ void erode_convolution(const pixel_t *in, pixel_t *out, const float *kernel,
  
 			if (normalize)
 				pixel = MAX_BRIGHTNESS * (pixel - min) / (max - min);
+			
+			// thresholds for pixel reassignment
 			if (pixel < min + 120) 
 				pixel = min;
 			else if (pixel > max - 30)
@@ -229,15 +227,14 @@ void erode(const pixel_t *in, pixel_t *out,
 	float kernel[n * n]; // variable length array
 	
 	int i, j; 
+	// assign kernel values
 	for (i = 0; i < n; i++) {
 		for (j = 0; j < n; j++) {
-// 			if ( j == 1 || j == 3 )
-// 				kernel[i*n+j] = 0;
-// 			else 
 				kernel[i*n+j] = 1;
 		}
 	}
 
+	// perform erosion convolution and normalize output
 	erode_convolution(in, out, kernel, nx, ny, n, true);
 	
 }  
@@ -258,10 +255,15 @@ pixel_t *canny_edge_detection(const pixel_t *in,
 	const int nx = bmp_ih->biWidth;
 	const int ny = bmp_ih->biHeight;
  
+	// gradient array
 	pixel_t *G = calloc(nx * ny * sizeof(pixel_t), 1);
 	pixel_t *after_Gx = calloc(nx * ny * sizeof(pixel_t), 1);
 	pixel_t *after_Gy = calloc(nx * ny * sizeof(pixel_t), 1);
+
+	// non-max suppression result
 	pixel_t *nms = calloc(nx * ny * sizeof(pixel_t), 1);
+
+	// output
 	pixel_t *out = malloc(bmp_ih->biSizeImage * sizeof(pixel_t));
  
 	if (G == NULL || after_Gx == NULL || after_Gy == NULL ||
@@ -271,24 +273,28 @@ pixel_t *canny_edge_detection(const pixel_t *in,
 		exit(1);
 	}
  
+	// convolve input image with gaussian filter for smoothing/high pass filtering
 	gaussian_filter(in, out, nx, ny, sigma);
  
 	const float Gx[] = {-1, 0, 1,
                       -2, 0, 2,
                       -1, 0, 1};
  
+	// convolve smoothed output with Sobel gradient in X direction
 	convolution(out, after_Gx, Gx, nx, ny, 3, false);
  
 	const float Gy[] = { 1, 2, 1,
                        0, 0, 0,
                       -1,-2,-1};
  
+ 
+	// convolve smoothed output with Sobel gradient in Y direction
 	convolution(out, after_Gy, Gy, nx, ny, 3, false);
  
+	// store the magnitude of the results of X & Y gradient calculation in the G gradient array
 	for (int i = 1; i < nx - 1; i++)
 		for (int j = 1; j < ny - 1; j++) {
 			const int c = i + nx * j;
-			// G[c] = abs(after_Gx[c]) + abs(after_Gy[c]);
 			G[c] = (pixel_t)hypot(after_Gx[c], after_Gy[c]);
 		}
  
@@ -305,10 +311,13 @@ pixel_t *canny_edge_detection(const pixel_t *in,
 			const int sw = ss + 1;
 			const int se = ss - 1;
  
+			// angle-based calculation of the gradient direction
 			const float dir = (float)(fmod(atan2(after_Gy[c],
 												 after_Gx[c]) + M_PI,
 										   M_PI) / M_PI) * 8;
  
+			// if the pixel of importance is greater than the following in the direction
+			// of the gradient, keep it in the NMS array, else set it to 0.
 			if (((dir <= 1 || dir > 7) && G[c] > G[ee] &&
 				 G[c] > G[ww]) || // 0 deg
 				((dir > 1 && dir <= 3) && G[c] > G[nw] &&
@@ -325,23 +334,30 @@ pixel_t *canny_edge_detection(const pixel_t *in,
 	// Reuse array
 	// used as a stack. nx*ny/2 elements should be enough.
 	int *edges = (int*) after_Gy;
+
+	// zero out the output array
 	memset(out, 0, sizeof(pixel_t) * nx * ny);
 	memset(edges, 0, sizeof(pixel_t) * nx * ny);
  
 	// Tracing edges with hysteresis . Non-recursive implementation.
+	// use a double threshold to determine "strong" edges
 	size_t c = 1;
 	for (int j = 1; j < ny - 1; j++)
 		for (int i = 1; i < nx - 1; i++) {
+			// if a "strong" pixel is detected that hasn;t already been assigned
 			if (nms[c] >= tmax && out[c] == 0) { // trace edges
+
+				// assign that pixel to the max brightness level
 				out[c] = MAX_BRIGHTNESS;
 				int nedges = 1;
 				edges[0] = c;
  
 				do {
 					nedges--;
+					// get index of pixel of interest
 					const int t = edges[nedges];
  
-					int nbs[8]; // neighbours
+					int nbs[8]; // get the pixel's neighbours
 					nbs[0] = t - nx;     // nn
 					nbs[1] = t + nx;     // ss
 					nbs[2] = t + 1;      // ww
@@ -351,13 +367,18 @@ pixel_t *canny_edge_detection(const pixel_t *in,
 					nbs[6] = nbs[1] + 1; // sw
 					nbs[7] = nbs[1] - 1; // se
  
+					// for all edge pixel neighbors
 					for (int k = 0; k < 8; k++)
+						// if the neighbor pixel is above the min threshold
+						// and has not already been assigned
 						if (nms[nbs[k]] >= tmin && out[nbs[k]] == 0) {
+							// set it to max brightness
 							out[nbs[k]] = MAX_BRIGHTNESS;
+							// reset the stack
 							edges[nedges] = nbs[k];
 							nedges++;
 						}
-				} while (nedges > 0);
+				} while (nedges > 0);	// while stack is not empty
 			}
 			c++;
 		}
@@ -376,7 +397,6 @@ void histogram_eq(unsigned char* image, unsigned char* edited_image,
     const int cols = bmp_ih->biHeight;
 	const int rows = bmp_ih->biWidth;
 
-  
     // Declaring 2 arrays for storing histogram values (frequencies) and 
     // new gray level values (newly mapped pixel values as per algorithm) 
     int hist[256] = { 0 }; 
@@ -412,7 +432,6 @@ void histogram_eq(unsigned char* image, unsigned char* edited_image,
         for (col = 0; col < cols; col++) 
             edited_image[(row*rows)+col] = (unsigned char)new_gray_level[image[(row*rows)+col]]; 
     } 
-  
 } 
 
 
@@ -504,7 +523,7 @@ int main(int argc, char* argv[])
 			write_bmp(dest, bi, out, padding);
 			free(out);
 			break;
-		case 4: 
+		case 4: // histogram equalization, erosion, then edge detection on resulting photo 
 			clock_gettime(CLOCK_MONOTONIC, &start);
 			out = malloc(bi.biSizeImage * sizeof(pixel_t));
   			histogram_eq(img, edited_img, &bi);
@@ -519,7 +538,7 @@ int main(int argc, char* argv[])
 			write_bmp(dest, bi, out, padding);
 			free(out);
 			break;
-		default:
+		default:  // save a grayscale image
 			clock_gettime(CLOCK_MONOTONIC, &start);
 			clock_gettime(CLOCK_MONOTONIC, &end);
 			write_bmp(dest, bi, img, padding);
