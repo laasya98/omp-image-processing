@@ -243,6 +243,7 @@ void erode(const pixel_t *in, pixel_t *out,
 	float kernel[n * n]; // variable length array
 	
 	int i, j; 
+#pragma omp parallel for shared(i, kernel) private(j)
 	for (i = 0; i < n; i++) {
 		for (j = 0; j < n; j++) {
 // 			if ( j == 1 || j == 3 )
