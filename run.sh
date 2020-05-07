@@ -1,5 +1,5 @@
 i=0
-MAX=1
+MAX=20
 time=0
 size=0
 
