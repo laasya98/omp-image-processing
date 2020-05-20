@@ -22,7 +22,6 @@ typedef unsigned char pixel_t;
 
 void read_bmp(FILE *fname, BITMAPINFOHEADER bi, unsigned char *img, int padding)
 {
-//	fseek(fname, 56, SEEK_SET);
 	int img_idx = 0;
 	// iterate over infile's scanlines
 	for (int i = 0, biHeight = abs(bi.biHeight); i < biHeight; i++)
@@ -35,19 +34,13 @@ void read_bmp(FILE *fname, BITMAPINFOHEADER bi, unsigned char *img, int padding)
 
 			// read RGB triple from infile
 			fread(&triple, sizeof(RGBTRIPLE), 1, fname);
-//			if ( i==125 ) printf("%x, %x, %x\n", triple.rgbtBlue, triple.rgbtGreen, triple.rgbtRed);
 
 			// put into char array (BGR order)
 			img[img_idx] = .3*triple.rgbtBlue + .59*triple.rgbtGreen + .11*triple.rgbtRed;
-// 			img[img_idx] = triple.rgbtBlue/3 + triple.rgbtGreen/3 + triple.rgbtRed/3;
 			img_idx ++;
 
 		}
 		// skip over padding, if any
-//         for (int k = 0; k < padding; k++)
-//         {
-//             printf("padding: %d\n", fgetc(fname));
-//         }
 		fseek(fname, padding, SEEK_CUR);
 	}
 }
@@ -73,9 +66,6 @@ void write_bmp(FILE *fname, BITMAPINFOHEADER bi, unsigned char *img, int padding
 			b = gray;//.11; 
 			triple.rgbtBlue = b; triple.rgbtGreen = g; triple.rgbtRed = r;
 			fwrite(&triple, sizeof(RGBTRIPLE), 1, fname); 
-			// fputc(r, fname);
-			// fputc(g, fname);
-			// fputc(b, fname);
 			img_idx ++;
 		}
 
@@ -85,7 +75,6 @@ void write_bmp(FILE *fname, BITMAPINFOHEADER bi, unsigned char *img, int padding
 			fputc(0x00, fname);
 		}
 	}
-//     printf("%d\n", img_idx);
 }
 
 // perform simple binary threshold
@@ -94,15 +83,10 @@ void threshold(unsigned char *img, unsigned char *edited_img, BITMAPINFOHEADER b
 	int i;
   #pragma omp parallel for shared(i, img, edited_img, bi, thresh)
 	for (i = 0; i < (bi.biHeight * bi.biWidth); i++) {
-		if (img[i] < thresh) {
+		if (img[i] < thresh) 
 			edited_img[i] = 0x00;
-			//printf("%d, %d | ",  img[i], edited_img[i]);
-		}
-		else {
+		else
 			edited_img[i] = 0xFF;
-			//printf("%d, %d | ",  img[i], edited_img[i]);
-		}
-
 	}
 }
 
@@ -117,7 +101,7 @@ void convolution(const pixel_t *in, pixel_t *out, const float *kernel,
  
 	int m, n, j, i;
 	if (normalize) {
-#pragma omp parallel for shared(m, min, max) private(j, i, n)
+	#pragma omp parallel for shared(m, min, max) private(j, i, n)
 		for (m = khalf; m < nx - khalf; m++)
 			for (n = khalf; n < ny - khalf; n++) {
 				float pixel = 0.0;
@@ -134,7 +118,7 @@ void convolution(const pixel_t *in, pixel_t *out, const float *kernel,
 				}
 	}
  
-#pragma omp parallel for shared(m, min, max, out) private(j, i, n)
+	#pragma omp parallel for shared(m, min, max, out) private(j, i, n)
 	for (m = khalf; m < nx - khalf; m++)
 		for (n = khalf; n < ny - khalf; n++) {
 			float pixel = 0.0;
@@ -170,11 +154,9 @@ void gaussian_filter(const pixel_t *in, pixel_t *out,
 	const float mean = (float)floor(n / 2.0);
 	float kernel[n * n]; // variable length array
  
-// 	fprintf(stderr, "gaussian_filter: kernel size %d, sigma=%g\n",
-// 			n, sigma);
 	size_t c = 0;
 	int i, j;
-#pragma omp parallel for shared(i, kernel) private(j, c)
+	#pragma omp parallel for shared(i, kernel) private(j, c)
 	for (i = 0; i < n; i++) {
 		c = i*n;
 		for (j = 0; j < n; j++) {
@@ -198,7 +180,7 @@ void erode_convolution(const pixel_t *in, pixel_t *out, const float *kernel,
  
 	int m, n, j, i;
 	if (normalize) {
-#pragma omp parallel for shared(m, min, max) private(j, i, n)
+	#pragma omp parallel for shared(m, min, max) private(j, i, n)
 		for (m = khalf; m < nx - khalf; m++)
 			for (n = khalf; n < ny - khalf; n++) {
 				float pixel = 0.0;
@@ -215,7 +197,7 @@ void erode_convolution(const pixel_t *in, pixel_t *out, const float *kernel,
 				}
 	}
  
-#pragma omp parallel for shared(m, min, max, out) private(j, i, n)
+	#pragma omp parallel for shared(m, min, max, out) private(j, i, n)
 	for (m = khalf; m < nx - khalf; m++)
 		for (n = khalf; n < ny - khalf; n++) {
 			float pixel = 0.0;
@@ -243,15 +225,10 @@ void erode(const pixel_t *in, pixel_t *out,
 	float kernel[n * n]; // variable length array
 	
 	int i, j; 
-#pragma omp parallel for shared(i, kernel) private(j)
-	for (i = 0; i < n; i++) {
-		for (j = 0; j < n; j++) {
-// 			if ( j == 1 || j == 3 )
-// 				kernel[i*n+j] = 0;
-// 			else 
-				kernel[i*n+j] = 1;
-		}
-	}
+	#pragma omp parallel for shared(i, kernel) private(j)
+	for (i = 0; i < n; i++) 
+		for (j = 0; j < n; j++) 
+			kernel[i*n+j] = 1;
 
 	erode_convolution(in, out, kernel, nx, ny, n, true);
 	
@@ -302,7 +279,7 @@ pixel_t *canny_edge_detection(const pixel_t *in,
  
 	convolution(out, after_Gy, Gy, nx, ny, 3, false);
  
-#pragma omp parallel for shared(i, G) private(j)
+	#pragma omp parallel for shared(i, G) private(j)
 	for (i = 1; i < nx - 1; i++)
 		for (j = 1; j < ny - 1; j++) {
 			const int c = i + nx * j;
@@ -311,7 +288,7 @@ pixel_t *canny_edge_detection(const pixel_t *in,
 		}
  
 	// Non-maximum suppression, straightforward implementation.
-#pragma omp parallel for shared(i, G) private(j)
+	#pragma omp parallel for shared(i, G) private(j)
 	for (i = 1; i < nx - 1; i++)
 		for (j = 1; j < ny - 1; j++) {
 			const int c = i + nx * j;
@@ -325,8 +302,8 @@ pixel_t *canny_edge_detection(const pixel_t *in,
 			const int se = ss - 1;
  
 			const float dir = (float)(fmod(atan2(after_Gy[c],
-												 after_Gx[c]) + M_PI,
-										   M_PI) / M_PI) * 8;
+						  after_Gx[c]) + M_PI,
+						  M_PI) / M_PI) * 8;
  
 			if (((dir <= 1 || dir > 7) && G[c] > G[ee] &&
 				 G[c] > G[ww]) || // 0 deg
@@ -349,7 +326,6 @@ pixel_t *canny_edge_detection(const pixel_t *in,
  
 	// Tracing edges with hysteresis . Non-recursive implementation.
 	size_t c = 1;
-// #pragma omp parallel for shared(j) private(i)
 	for (j = 1; j < ny - 1; j++)
 		for (i = 1; i < nx - 1; i++) {
 			if (nms[c] >= tmax && out[c] == 0) { // trace edges
@@ -406,7 +382,7 @@ void histogram_eq(unsigned char* image, unsigned char* edited_image,
     int col, row, total, curr, i; 
   
     // Calculating frequency of occurrence for all pixel values 
-#pragma omp parallel for shared(row, hist) private(col)
+    #pragma omp parallel for shared(row, hist) private(col)
     for (row = 0; row < rows; row++) { 
         // logic for calculating histogram 
         for (col = 0; col < cols; col++) 
@@ -428,8 +404,8 @@ void histogram_eq(unsigned char* image, unsigned char* edited_image,
     } 
   
     // performing histogram equalization by mapping new gray levels 
-#pragma omp parallel for shared(row, edited_image) private(col)
-	for (row = 0; row < rows; row++) { 
+    #pragma omp parallel for shared(row, edited_image) private(col)
+    for (row = 0; row < rows; row++) { 
         // mapping to new gray level values 
         for (col = 0; col < cols; col++) 
             edited_image[row*rows + col] = (unsigned char)new_gray_level[image[row*rows+col]]; 
@@ -453,7 +429,7 @@ int main(int argc, char* argv[])
 	char* outfile = argv[2];
 	// operation to perform
 	int mode = atoi(argv[3]);
-    int p = atoi(argv[4]);
+    	int p = atoi(argv[4]);
 
 	omp_set_num_threads(p);
 	
@@ -505,7 +481,7 @@ int main(int argc, char* argv[])
 			clock_gettime(CLOCK_MONOTONIC, &end);
 			write_bmp(dest, bi, edited_img, padding);
 			break;
-        case 1: // histogram equalization
+        	case 1: // histogram equalization
 			clock_gettime(CLOCK_MONOTONIC, &start);
 			histogram_eq(img, edited_img, &bi);
 			clock_gettime(CLOCK_MONOTONIC, &end);
@@ -538,8 +514,6 @@ int main(int argc, char* argv[])
 			else if ( bi.biWidth < 1200) sigma = 1.0f;
 			else sigma = 2.0f;
 			erode(edited_img, img, bi.biWidth, bi.biHeight, sigma);
-//  			erode(out, edited_img, bi.biWidth, bi.biHeight, 0.5f);
-//  			erode(edited_img, out, bi.biWidth, bi.biHeight, 0.5f);
 			out = canny_edge_detection(img, &bi, 120, 130, 1.0f); 
 			clock_gettime(CLOCK_MONOTONIC, &end);
 			write_bmp(dest, bi, out, padding);
